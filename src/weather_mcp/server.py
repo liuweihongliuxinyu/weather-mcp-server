@@ -377,6 +377,122 @@ async def handle_call_tool(
         )
 
 
+# ── Resource 原语（Lab 2：让 AI 能"读"数据）─────────────────
+
+SUPPORTED_CITIES = [
+    "北京", "上海", "广州", "深圳", "成都", "杭州", "武汉",
+    "Tokyo", "London", "New York", "Paris", "Berlin", "Sydney",
+]
+
+
+async def handle_list_resources() -> list[types.Resource]:
+    """MCP 协议方法: resources/list
+
+    与 tools/list 的区别：
+    - Tool = AI 可以"做"什么（动词：查询、发送、创建）
+    - Resource = AI 可以"读"什么（名词：文件、数据库记录、API 数据）
+
+    这里把"支持的城市列表"暴露为 Resource。
+    """
+    return [
+        types.Resource(
+            uri="weather://cities",
+            name="支持的城市",
+            description="Weather MCP Server 支持查询天气的城市列表。包含中国主要城市和国际城市。",
+            mimeType="application/json",
+        )
+    ]
+
+
+async def handle_read_resource(uri: str) -> str:
+    """MCP 协议方法: resources/read
+
+    当 AI 读取某个 resource 的 URI 时触发。
+    返回该 resource 的内容。
+
+    与 tools/call 的区别：
+    - tools/call → 执行动作（副作用）
+    - resources/read → 读取数据（无副作用，幂等）
+    """
+    if uri == "weather://cities":
+        import json
+        return json.dumps(SUPPORTED_CITIES, ensure_ascii=False, indent=2)
+    return f"未知资源: {uri}"
+
+
+# ── Prompt 原语（Lab 2：预置提示词模板）─────────────────────
+
+
+async def handle_list_prompts() -> list[types.Prompt]:
+    """MCP 协议方法: prompts/list
+
+    Prompt = 预定义的提示词模板，引导 AI 以特定方式完成任务。
+    比 Tool 更高层：Tool 给 AI 能力，Prompt 给 AI 思路。
+
+    这里提供一个"天气报告"模板。
+    """
+    return [
+        types.Prompt(
+            name="weather-report",
+            description="生成指定城市的天气报告摘要，包含当前天气、预报和出行建议",
+            arguments=[
+                types.PromptArgument(
+                    name="city",
+                    description="城市名称",
+                    required=True,
+                ),
+                types.PromptArgument(
+                    name="style",
+                    description="报告风格：brief（简洁）、detailed（详细）、travel（出行建议）",
+                    required=False,
+                ),
+            ],
+        )
+    ]
+
+
+async def handle_get_prompt(
+    name: str, arguments: dict | None
+) -> types.GetPromptResult:
+    """MCP 协议方法: prompts/get
+
+    返回填充参数后的提示词消息列表。
+    这个消息会被注入到 AI 的上下文中，引导 AI 完成任务。
+    """
+    if name == "weather-report":
+        args = arguments or {}
+        city = args.get("city", "北京")
+        style = args.get("style", "brief")
+
+        prompts = {
+            "brief": f"请查询 {city} 的当前天气，用 2-3 句话简要描述。",
+            "detailed": f"请查询 {city} 的当前天气和未来 3 天预报，给出详细的天气分析，包括温度变化趋势、降水概率、风速等。",
+            "travel": f"请查询 {city} 的当前天气、预报和空气质量，并基于天气情况给出出行建议（是否需要带伞、穿衣建议、是否适合户外活动）。",
+        }
+
+        return types.GetPromptResult(
+            messages=[
+                types.PromptMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=prompts.get(style, prompts["brief"]),
+                    ),
+                )
+            ]
+        )
+    return types.GetPromptResult(
+        messages=[
+            types.PromptMessage(
+                role="user",
+                content=types.TextContent(
+                    type="text", text=f"未知提示词: {name}"
+                ),
+            )
+        ]
+    )
+
+
 # ── Server 实例化与启动 ────────────────────────────────────
 
 
@@ -398,6 +514,10 @@ def create_server() -> Server:
     )
     server.list_tools()(handle_list_tools)
     server.call_tool()(handle_call_tool)
+    server.list_resources()(handle_list_resources)
+    server.read_resource()(handle_read_resource)
+    server.list_prompts()(handle_list_prompts)
+    server.get_prompt()(handle_get_prompt)
     return server
 
 

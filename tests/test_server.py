@@ -178,3 +178,72 @@ async def test_tool_list_includes_air_quality():
     aq_tool = [t for t in result if t.name == "get_air_quality"]
     assert len(aq_tool) == 1
     assert "PM2.5" in aq_tool[0].description
+
+
+# ── Resource 测试（Lab 2 新增）────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_resources():
+    """验证 resources/list 返回了城市列表资源"""
+    from weather_mcp.server import handle_list_resources
+
+    result = await handle_list_resources()
+    assert len(result) >= 1
+    cities_resource = [r for r in result if str(r.uri) == "weather://cities"]
+    assert len(cities_resource) == 1
+
+
+@pytest.mark.asyncio
+async def test_read_resource_cities():
+    """验证读取 weather://cities 返回 JSON 城市列表"""
+    from weather_mcp.server import handle_read_resource
+
+    result = await handle_read_resource("weather://cities")
+    assert "北京" in result
+    assert "Tokyo" in result
+
+
+@pytest.mark.asyncio
+async def test_read_resource_unknown():
+    """验证读取未知 URI 返回友好错误"""
+    from weather_mcp.server import handle_read_resource
+
+    result = await handle_read_resource("weather://nonexistent")
+    assert "未知" in result
+
+
+# ── Prompt 测试（Lab 2 新增）──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_prompts():
+    """验证 prompts/list 返回了天气报告模板"""
+    from weather_mcp.server import handle_list_prompts
+
+    result = await handle_list_prompts()
+    report = [p for p in result if p.name == "weather-report"]
+    assert len(report) == 1
+    assert len(report[0].arguments) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_prompt_brief():
+    """验证获取 brief 风格的天气报告提示词"""
+    from weather_mcp.server import handle_get_prompt
+
+    result = await handle_get_prompt("weather-report", {"city": "杭州", "style": "brief"})
+    assert len(result.messages) == 1
+    assert "杭州" in result.messages[0].content.text
+    assert "简要" in result.messages[0].content.text
+
+
+@pytest.mark.asyncio
+async def test_get_prompt_travel():
+    """验证获取 travel 风格的天气报告提示词"""
+    from weather_mcp.server import handle_get_prompt
+
+    result = await handle_get_prompt("weather-report", {"city": "上海", "style": "travel"})
+    assert len(result.messages) == 1
+    assert "上海" in result.messages[0].content.text
+    assert "出行" in result.messages[0].content.text
